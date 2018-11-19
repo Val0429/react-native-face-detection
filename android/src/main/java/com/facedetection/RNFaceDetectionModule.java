@@ -13,6 +13,8 @@ public class RNFaceDetectionModule extends ReactContextBaseJavaModule {
   public RNFaceDetectionModule(ReactApplicationContext reactContext) {
     super(reactContext);
     this.reactContext = reactContext;
+
+    MainApplication.setCurrentActivity(this.getCurrentActivity());
   }
 
   @Override

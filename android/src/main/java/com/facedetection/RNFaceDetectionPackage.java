@@ -1,6 +1,8 @@
 
 package com.facedetection;
 
+import android.app.Activity;
+
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -11,6 +13,13 @@ import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.uimanager.ViewManager;
 import com.facebook.react.bridge.JavaScriptModule;
 public class RNFaceDetectionPackage implements ReactPackage {
+
+    public static Activity mActivity;
+
+    public RNFaceDetectionPackage(Activity activity) {
+        mActivity = activity;
+    }
+
     @Override
     public List<NativeModule> createNativeModules(ReactApplicationContext reactContext) {
       return Arrays.<NativeModule>asList(new RNFaceDetectionModule(reactContext));
@@ -23,6 +32,8 @@ public class RNFaceDetectionPackage implements ReactPackage {
 
     @Override
     public List<ViewManager> createViewManagers(ReactApplicationContext reactContext) {
-      return Collections.emptyList();
+        return Arrays.<ViewManager>asList(
+                new FaceDetectionViewManager(null, reactContext)
+        );
     }
 }
