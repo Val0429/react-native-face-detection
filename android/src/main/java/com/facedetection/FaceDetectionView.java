@@ -1,26 +1,45 @@
-package com.facedetection;
+package com.facedetection.Bridge;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Matrix;
+import android.graphics.Point;
+import android.graphics.Rect;
+import android.graphics.drawable.ColorDrawable;
 import android.hardware.Camera;
 import android.net.Uri;
+import android.support.media.ExifInterface;
 import android.util.Base64;
+import android.util.DisplayMetrics;
+import android.util.Log;
+import android.util.SparseArray;
+import android.view.ViewGroup;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.RelativeLayout;
 
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactContext;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.uimanager.ThemedReactContext;
 import com.facebook.react.uimanager.events.RCTEventEmitter;
-//import com.facedetection.MainApplication;
+import com.facedetection.MainApplication;
 import com.isap.libisapcamera.AutoFitTextureView;
+
 import com.isap.libisapcamera.CameraCapture;
 import com.isap.libisapcamera.CameraCaptureCallback;
 import com.isap.libisapfacedetector.FaceDetectManager;
 import com.isap.libisapfacedetector.FaceDetectorPoolCallback;
+import com.isap.utility.FileUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -37,7 +56,10 @@ import java.util.ArrayList;
 public class FaceDetectionView extends FrameLayout implements CameraCaptureCallback, FaceDetectorPoolCallback {
     private static final String TAG = "FaceDetectionView";
 
-    private static final String SNAPSHOT_FOLDER = /*FileUtils.getDiskCacheDir(MainApplication.getAppContext()) +*/ "/snapshot/";
+    private static final String SNAPSHOT_FOLDER = FileUtils.getDiskCacheDir(MainApplication.getAppContext()) + "/snapshot/";
+
+    private com.facedetection.Bridge.uicamera.CameraSourcePreview mPreview;
+    private com.facedetection.Bridge.uicamera.GraphicOverlay mGraphicOverlay;
 
     private static int mCurrentCameraId = Camera.CameraInfo.CAMERA_FACING_FRONT;
 
@@ -51,6 +73,7 @@ public class FaceDetectionView extends FrameLayout implements CameraCaptureCallb
     private CameraCapture m_capture;
     private FaceDetectManager m_pool = null;
     private AutoFitTextureView m_textureView;
+    private ImageView m_imageView;
 
     private static final Object m_locker = new Object();
 
@@ -64,19 +87,23 @@ public class FaceDetectionView extends FrameLayout implements CameraCaptureCallb
                 event);
     }
 
-    public FaceDetectionView(Context context) {
+    public FaceDetectionView(ThemedReactContext context) {
         super(context);
 
         mContext = context;
-        mActivity = /*RNFaceDetectionPackage.mActivity;*/MainApplication.getCurrentActivity();
+        mActivity = context.getCurrentActivity();
         initView();
         initCamera();
         initDetector();
     }
 
     private void initView() {
+        mPreview = new com.facedetection.Bridge.uicamera.CameraSourcePreview(mContext);
         m_textureView = new AutoFitTextureView(mContext);
-        addView(m_textureView);
+        m_imageView = new ImageView(mContext);
+        mPreview.addView(m_textureView);
+        mPreview.addView(m_imageView);
+        addView(mPreview);
     }
 
     private void initCamera() {
@@ -84,7 +111,7 @@ public class FaceDetectionView extends FrameLayout implements CameraCaptureCallb
     }
 
     private void initDetector() {
-        m_pool = new FaceDetectManager(/*FileUtils.getDiskCacheDir(MainApplication.getAppContext()) + File.separator + */"shape_predictor_68_face_landmarks.dat", this);
+        m_pool = new FaceDetectManager(FileUtils.getDiskCacheDir(MainApplication.getAppContext()) + File.separator + "shape_predictor_68_face_landmarks.dat", this);
     }
 
     @Override
@@ -100,7 +127,7 @@ public class FaceDetectionView extends FrameLayout implements CameraCaptureCallb
         if (System.currentTimeMillis() - mLastUpdateTime < mCheckTime)
             return;
 
-        NotifyFaceDetected(faces.get(0));
+        NotifyFaceDetected(faces.get(0), (faces.size()>1)?faces.get(1):null);
 
         mLastUpdateTime = System.currentTimeMillis();
     }
@@ -156,7 +183,7 @@ public class FaceDetectionView extends FrameLayout implements CameraCaptureCallb
 //        return ret;
 //    }
 
-    private boolean NotifyFaceDetected(Bitmap bmp) {
+    private boolean NotifyFaceDetected(Bitmap detect_face, Bitmap ui_face) {
         boolean ret = false;
 
         if (mSaveDetectedInFile) {
@@ -171,7 +198,7 @@ public class FaceDetectionView extends FrameLayout implements CameraCaptureCallb
                 File file = new File(SNAPSHOT_FOLDER, fileName);
 
                 FileOutputStream stream = new FileOutputStream(file);
-                bmp.compress(Bitmap.CompressFormat.JPEG, 100, stream);
+                detect_face.compress(android.graphics.Bitmap.CompressFormat.JPEG, 100, stream);
                 stream.flush();
                 stream.close();
                 stream = null;
@@ -191,12 +218,20 @@ public class FaceDetectionView extends FrameLayout implements CameraCaptureCallb
             }
         }
         else {
-            ByteArrayOutputStream stream = new ByteArrayOutputStream();
-            bmp.compress(Bitmap.CompressFormat.JPEG, 100, stream);
-            byte[] byteArray = stream.toByteArray();
-
             WritableMap event2 = Arguments.createMap();
+
+            ByteArrayOutputStream stream = new ByteArrayOutputStream();
+            detect_face.compress(Bitmap.CompressFormat.JPEG, 100, stream);
+            byte[] byteArray = stream.toByteArray();
             event2.putString("image", Base64.encodeToString(byteArray, Base64.DEFAULT));
+
+            if (ui_face != null) {
+                ByteArrayOutputStream stream2 = new ByteArrayOutputStream();
+                ui_face.compress(Bitmap.CompressFormat.JPEG, 100, stream2);
+                byte[] byteArray2 = stream2.toByteArray();
+                event2.putString("image2", Base64.encodeToString(byteArray2, Base64.DEFAULT));
+            }
+
             sentNativeEvent(event2, "FaceDetected");
             ret = true;
         }
